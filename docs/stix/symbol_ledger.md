@@ -2,7 +2,45 @@
 
 Status ladder (template_dos_port canon): `GUESS → OBSERVED → RECOVERED →
 ASM_MATCHED → VERIFIED → CANONICAL`. A name climbs only on evidence.
-Nothing is RECOVERED yet — bring-up produced OBSERVED facts only.
+Nothing is RECOVERED yet — but 31 routines are ORACLE_PASSING lifted
+artifacts (byte-exact over the full demo), and the disassembly below is
+UNDERSTOOD (semantics earned from hardware contracts + traced reads/writes,
+reversible to the ASM). These are the refactoring queue toward pure source.
+
+## Gameplay routines (understood from ORACLE_PASSING disassembly)
+
+Names earned from HARDWARE FACTS (register targets), not screen-watching:
+
+| Address | Name | Status | Evidence |
+|---|---|---|---|
+| $739E | read_joystick_port1 | OBSERVED | clears $4B02-08, reads $DC01 (joy1), LSRs 5 bits → dir/fire flags; fire-release path checks $4B09→$4B07 |
+| $73EC | player_vs_hazard_collision | OBSERVED | reads sprite0 pos ($D000/1/+MSB) → player grid $4B00/$4B01; compares vs sprites 6,7,3 ($D00C-F,$D006/7); $4B4A disables (DEC + ret 1) |
+| $72A0 | sprite_to_grid(x_reg=sprite sel) | OBSERVED | reads $D00C+x/$D00D+x + MSB $D010 → grid $4B3C/$4B3D = (sx9>>1)-$0B, sy-$30 |
+| $6A0B | sid_voice1_freq_from_$4B28 | OBSERVED | bit-reverses low nibble of $4B28→$4B18, hi nibble; writes SID $D402/$D403 (voice-1 freq) |
+| $709F | bitmap_pixel_addr(x=X,y=Y) | OBSERVED | X,Y→byte addr $14/$15 via row table $6F1B, returns col-pair X=x&3, row Y=y&7, A=byte |
+| $70D9 | plot_pixel | OBSERVED | JSR $709F; ORA mask $75D1,X; STA ($14),Y — sets a hires/MC bitmap pixel |
+| $697F | test_pixel | OBSERVED | LDA ($45),Y AND $75D1,X — reads a bitmap pixel; sets $46 bit7 |
+| $763A | poke_cia1_pra | OBSERVED | STA $DC00 (joystick/keyboard column select) |
+| $6703, $6237 | large gameplay routines (228, 239 insns) | OBSERVED | ORACLE_PASSING; not yet disassembled in full |
+
+## Runtime state model — the $4B00 game-state page (earned field names)
+
+| Address | Width | Name | Evidence |
+|---|---|---|---|
+| $4B00/$4B01 | u8,u8 | player_grid_x, player_grid_y | written by $73EC from sprite 0 |
+| $4B02/$4B03/$4B04/$4B05 | u8 | joy_up/down/left/right | set by $739E from $DC01 bits 0-3 |
+| $4B08 | u8 | joy_fire | set by $739E from $DC01 bit 4 |
+| $4B07/$4B09 | u8 | fire-release flag / its enable | $739E fire-not-pressed path |
+| $4B3C/$4B3D | u8,u8 | sprite_grid_x, sprite_grid_y | written by $72A0 |
+| $4B28 | u8 | sound_freq_source | read by $6A0B → SID voice-1 freq |
+| $4B18 | u8 | sound_freq_lo scratch | $6A0B; also = SID $D402 |
+| $4B4A | u8 | collision_disable countdown | $73EC BNE/DEC |
+| $14/$15, $45/$46 | ptr | bitmap byte pointers | $709F/$697F |
+| $6F1B.. | table | bitmap row-address table (Y//8→base) | $709F index |
+| $75D1.. | table | bitmap pixel bit-mask (x&3→mask) | $70D9/$697F |
+
+## Original symbol ledger below
+
 
 ## Code
 
