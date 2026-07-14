@@ -2,10 +2,11 @@
 
 Status ladder (template_dos_port canon): `GUESS → OBSERVED → RECOVERED →
 ASM_MATCHED → VERIFIED → CANONICAL`. A name climbs only on evidence.
-Nothing is RECOVERED yet — but 31 routines are ORACLE_PASSING lifted
-artifacts (byte-exact over the full demo), and the disassembly below is
-UNDERSTOOD (semantics earned from hardware contracts + traced reads/writes,
-reversible to the ASM). These are the refactoring queue toward pure source.
+Nothing is RECOVERED yet — but 39 routines are ORACLE_PASSING lifted
+artifacts (byte-exact over the full 6301-frame demo; see run_status.md
+session 7), and the disassembly below is UNDERSTOOD (semantics earned from
+hardware contracts + traced reads/writes, reversible to the ASM). These are
+the refactoring queue toward pure source.
 
 ## Gameplay routines (understood from ORACLE_PASSING disassembly)
 
@@ -22,7 +23,10 @@ Names earned from HARDWARE FACTS (register targets), not screen-watching:
 | $70D9 | plot_pixel | OBSERVED | JSR $709F; ORA mask $75D1,X; STA ($14),Y — sets a hires/MC bitmap pixel |
 | $697F | test_pixel | OBSERVED | LDA ($45),Y AND $75D1,X — reads a bitmap pixel; sets $46 bit7 |
 | $763A | poke_cia1_pra | OBSERVED | STA $DC00 (joystick/keyboard column select) |
-| $6703, $6237 | large gameplay routines (228, 239 insns) | OBSERVED | ORACLE_PASSING; not yet disassembled in full |
+| $70A5 | bitmap_pixel_addr_from($4B1C/$4B1D) | OBSERVED | same shape as $709F but reads the candidate-move position $4B1C/1D instead of the live one; feeds $7166's collision test |
+| $7166 | test_move_collision_abort | OBSERVED | JSR $70A5; AND/CMP mask $75D1,X (pixel-occupied test); if occupied: **PLA PLA then RTS** — a non-local "cascading return" that unwinds past $70E2 straight back to $6AAC's continuation, restoring $4B00/01 from $4B1C/1D unchanged. See "Non-local return idiom" below — this was misdiagnosed as a wait-loop in session 4; the oracle proved it's a collision-abort short-circuit |
+| $70E2 | check_move_axis_collisions | OBSERVED | dispatches up to 3 calls to $7166 (diagonal corners) based on $4B04/$4B05 (move direction); each call can cascade-return past this routine entirely |
+| $6703, $6237 | large gameplay routines (228, 239 insns) | OBSERVED | ORACLE_PASSING (both now lift+verify; $6237 not yet call-graph-placed) |
 
 ## Game tick structure (from the caller graph, ~68 ticks / 120 frames)
 
@@ -70,10 +74,27 @@ Census over the executed code region jumped from ~54% to **91.2% liftable**
 (52/57 JSR targets; 11 use the BIT-skip idiom). Remaining refusals: 4 brk +
 1 bad_opcode (data bytes misread as call targets).
 
-Big ORACLE_PASSING routines not yet disassembled: $6703 (228 insns, $67xx
-draw region), $6237 (239 insns). Any true runtime-patched code would need
-runtime_code
-analysis; the $D41B-random hazard AI is the core game behaviour.
+**Correction #2 (2026-07-14, same session):** $7166/$70E2 were guessed in
+session 4 as "non-returning loop/wait constructs → checkpoint seams, not
+leaves." That guess was WRONG — proven by installing them as lifted hooks
+across the full demo, which hung a nested `emulate_call` for 2,000,000
+instructions. Disassembly shows $7166 is `test_move_collision_abort`: it
+tests a candidate bitmap pixel and, if occupied, does **`PLA PLA` then
+RTS** — a legal 6502 idiom that discards its own caller's ($70E2's) return
+address and returns two levels up, straight to $6AAC. Real hardware (and
+plain interpretation) handles this for free; the LIFTER's `emulate_call`
+cannot, because it waits for one *specific* return PC+SP per JSR. Fixed
+generically in `c64_re/lift/cfg.py` (not Stix-specific): `scan_function`
+now tracks each routine's own PHA/PLA balance and refuses a NET-NEGATIVE
+routine as `nonlocal_return` ($7166); `refuse_unsafe_callers` transitively
+refuses any DIRECT caller as `calls_nonlocal_return` ($70E2) — but stops
+there, since once $70E2 is left uninstalled, $6AAC's own call into it falls
+through to plain interpretation and composes correctly (proven: $6AAC,
+217 insns, stayed ORACLE_PASSING throughout). Net result: two more
+routines correctly excluded (not "REFUSED forever" — accurately labeled),
+and the two big draw routines $6703 (228 insns) and $6237 (239 insns) are
+now ORACLE_PASSING too (previously undescribed; not yet disassembled in
+full). The $D41B-random hazard AI remains the core game behaviour to name.
 
 ## Runtime state model — the $4B00 game-state page (earned field names)
 

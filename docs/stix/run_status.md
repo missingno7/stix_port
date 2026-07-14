@@ -3,15 +3,17 @@
 ## Summary (for the human)
 
 The original Stix disk boots and plays inside our new C64 recovery VM, and
-your full-game demo (power-on through game-over) is now the reference
-oracle. Against that whole 2-minute playthrough, the automatic lifter has
-turned **31 of the game's own routines into Python that was checked against
-the original on every call — 1,222 calls, zero differences** — while the
-game played through to game-over as a live hybrid. That is the first real
-slice of the game provably reproduced. The tool also flagged three routines
-it could NOT safely reproduce yet (self-modifying zero-page code and two
-loop/wait constructs) — exactly the honest "not done" signal the method is
-built to surface. Grind driver: `python scripts/grind.py`.
+your demos (five now, including a full game and a level-2 run) are the
+reference oracle. Against the full 2-minute playthrough, the automatic
+lifter has turned **39 of the game's own routines into Python that was
+checked against the original on every call — 1,538 calls, zero unexpected
+differences** — while the game played through to game-over as a live
+hybrid. That is the first real slice of the game provably reproduced. The
+tool also flags what it can't safely reproduce yet — one true
+self-modifying-code spot — the honest "not done" signal the method is
+built to surface (two earlier "unsafe" guesses turned out to be a
+misdiagnosis, corrected this session — see below). Grind driver:
+`python scripts/grind.py`.
 
 ## Where we are
 
@@ -30,21 +32,37 @@ built to surface. Grind driver: `python scripts/grind.py`.
   against the ASM (player grid pos + the hit boolean the caller reads via
   the Z flag — 0 mismatches over 993 calls). Island manifest:
   `docs/stix/recovered_islands.md` (8 RECOVERED islands).
-- Lift manifest over the full demo: **31 ORACLE_PASSING** (1,475 instr,
-  3,353 code bytes proven byte-exact), 3 DIVERGED, 8 LIFTED-not-fired,
-  27 REFUSED, of 69 routines (`artifacts/grind/lift_manifest.json`).
+- Lift manifest over the full demo: **39 ORACLE_PASSING**, 1 DIVERGED
+  (the one true SMC spot, $00F1), 11 LIFTED-not-fired, 18 REFUSED
+  (10 brk + 5 bad_opcode + 1 jmp_ind + the 2 non-local-return routines),
+  of 69 routines (`artifacts/grind/lift_manifest.json`).
 - Islands by status: 8 RECOVERED pure functions (7 hook-verified byte-exact,
-  collision shadow-verified); the 31 ORACLE_PASSING lifted artifacts remain
+  collision shadow-verified); the 39 ORACLE_PASSING lifted artifacts remain
   the refactoring queue.
-- Demo corpus: 1 — `demo_run1_20260714_202142` (cold-start, 6301 frames,
-  power-on → trainer → full game → game-over; replays bit-identically).
+- Demo corpus: 5 recorded, 4 human-played and analyzed — see
+  `docs/stix/demo_manifest.md` (full game, level 2, keyboard controls).
 - Open blockers: none. Findings to chase: $00F1 (runtime-patched SMC →
-  runtime_code machinery), $7166/$70E2 (non-returning loop/wait constructs
-  → checkpoint seams, not leaves).
+  runtime_code machinery). $7166/$70E2 are RESOLVED this session (see
+  below) — they were never checkpoint seams; corrected in the ledger.
 
 ## Recent findings (newest first)
 
-- 2026-07-14 (session 7) — **Lifter learned the 6502 BIT-skip idiom.** The
+- 2026-07-14 (session 7, part 2) — **Lifter learned the non-local-return
+  idiom; $7166/$70E2 were misdiagnosed.** Installing every lifted routine
+  across a new keyboard-controls demo hung: $6AAC's lifted hook nested a
+  JSR into $70E2, which nested a JSR into $7166 — which sometimes does
+  `PLA PLA; ...; RTS`, discarding $70E2's return address and cascading two
+  levels back to $6AAC. Legal on hardware; fatal to `emulate_call`'s
+  single-frame return bookkeeping. Fixed generically in `c64_re/lift/cfg.py`:
+  `scan_function` tracks each routine's own PHA/PLA balance and refuses a
+  net-negative one as `nonlocal_return`; `refuse_unsafe_callers` refuses its
+  direct callers as `calls_nonlocal_return` (stopping at one level — callers
+  further up are unaffected once the unsafe pair is left uninstalled).
+  Result: full-demo grind went from 31 → **39 ORACLE_PASSING** with the
+  crash gone (`test_lift.py::test_scan_refuses_nonlocal_return`,
+  `test_refuse_unsafe_callers_flags_direct_caller_only`). $7166 is
+  correctly understood now: `test_move_collision_abort`, not a wait loop.
+- 2026-07-14 (session 7, part 1) — **Lifter learned the 6502 BIT-skip idiom.** The
   hottest "missing" routines were not self-modifying code (as the ledger
   guessed) but the `$2C`/`$24` BIT-skip trick (a branch lands inside a BIT
   operand, so bytes decode two ways). The lifter previously refused these as
@@ -124,16 +142,20 @@ built to surface. Grind driver: `python scripts/grind.py`.
 
 ## Next targets (evidence-ordered)
 
-1. Grow the demo corpus: more played demos covering paths this one misses
-   (other trainer answers, each hazard, edge cases) — each replays into the
-   grind and widens verified coverage. Ask the human.
+1. Grow the demo corpus: more played demos covering paths these five miss
+   (Y trainer answers, each hazard, death/respawn, game-over from level 2+)
+   — each replays into the grind and widens verified coverage. Ask the human.
 2. Refactor the ORACLE_PASSING lifted artifacts into named pure rules
    (recover_one_routine), biggest/hottest first: $6703 (228 insns), $6237
-   (239 insns), $7183 (96 insns). Name via evidence; track with @oracle_link.
-3. Chase the DIVERGED findings: wire $00F1 through `runtime_code` (variant
-   guarding); classify $7166/$70E2 as checkpoint/wait seams.
+   (239 insns), $7183 (96 insns), $6AAC (217 insns). Name via evidence;
+   track with @oracle_link. $7166/$70E2 are understood (collision-abort)
+   but stay lift-excluded by design — recover them by hand instead.
+3. Chase the one remaining DIVERGED finding: wire $00F1 through
+   `runtime_code` (variant guarding) — the only true SMC spot found so far.
 4. Frame-boundary identification → frame verifier with a no-op candidate
    (the frame oracle already proved the lifted hybrid pixel-exact for 100
    frames; extend it across the whole demo).
-5. Push liftable count up: several REFUSED entries are indirect-jump
-   dispatchers — candidates for jump-table recovery, not static lifting.
+5. Push liftable count up: the 5 brk + 1 jmp_ind refusals are likely
+   indirect-jump dispatchers — candidates for jump-table recovery, not
+   static lifting. 5 bad_opcode refusals are probably data bytes
+   misidentified as JSR targets by the census heuristic — check first.

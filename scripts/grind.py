@@ -33,7 +33,7 @@ sys.path.insert(0, str(PORT_ROOT))
 
 from c64_re.hooks import HookRegistry  # noqa: E402
 from c64_re.input_demo import InputDemoPlayback  # noqa: E402
-from c64_re.lift.cfg import scan_function  # noqa: E402
+from c64_re.lift.cfg import refuse_unsafe_callers, scan_function  # noqa: E402
 from c64_re.lift.emit import lift_and_compile  # noqa: E402
 from c64_re.lift.manifest import LiftManifest, LiftRecord  # noqa: E402
 from c64_re.runtime import run_frames  # noqa: E402
@@ -142,9 +142,15 @@ def cmd_lift(args) -> int:
         stix.start_game(rt)
         run_frames(rt, 60)
     manifest = LiftManifest.load(MANIFEST)
+    scans = {entry: scan_function(rt.mem.rb, entry, max_instructions=args.max_instructions)
+             for entry in targets}
+    # Tier-2: a function that JSRs to a nonlocal_return target is ALSO unsafe
+    # to lift standalone (its own emitted emulate_call for that JSR hangs) —
+    # see c64_re.lift.cfg's module docstring.  Caught here, before verify
+    # ever installs a hook for it.
+    scans.update(refuse_unsafe_callers(scans))
     lifted = refused = 0
-    for entry in targets:
-        scan = scan_function(rt.mem.rb, entry, max_instructions=args.max_instructions)
+    for entry, scan in scans.items():
         if scan:
             lifted += 1
             manifest.update(LiftRecord(entry=entry, name=f"lifted_{entry:04X}",
