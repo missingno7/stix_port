@@ -35,3 +35,44 @@ def decode_joystick(port_b: int) -> JoyInput:
         right=not (port_b & 0x08),
         fire=not (port_b & 0x10),
     )
+
+
+# Keyboard fallback controls ($6CF8): scanned only when the joystick gave no
+# input this tick.  Each entry maps a C64 keyboard-matrix key to the state-page
+# flag it sets (offset from $4B00).  Derived from $6CF8's $DC00 column selects
+# ($FD = col 1, $FE = col 0) + $DC01 row masks.
+#
+# STATUS: OBSERVED, not RECOVERED — the demo was played on the joystick, so
+# $6CF8 always takes its "joystick active, skip keyboard" path and this mapping
+# is UNEXERCISED.  Verifying it needs a keyboard-played demo (see
+# docs/stix/demo_manifest.md corpus blind spots).
+KEYBOARD_CONTROLS = {
+    "W": 0x02,  # up
+    "Z": 0x03,  # down
+    "A": 0x04,  # left
+    "S": 0x05,  # right
+    "CRSR_UD": 0x08,  # fire
+    "CRSR_LR": 0x07,  # (fire-release line)
+    "F5": 0x0B,       # (aux)
+}
+
+
+@oracle_link(
+    boundary="$6CF8",
+    contract="keyboard fallback: if no joystick input this tick, map keys -> flags",
+    status="OBSERVED",
+)
+def keyboard_controls(joystick_active: bool, pressed: frozenset) -> dict:
+    """Flag updates from the keyboard when the joystick is idle.
+
+    Returns ``{offset: 1}`` for each mapped key currently pressed (plus a
+    reset of the fire-release flag $4B07), or ``{}`` when the joystick already
+    supplied input this tick.  OBSERVED only — see KEYBOARD_CONTROLS.
+    """
+    if joystick_active:
+        return {}
+    out = {0x07: 0}  # $6CF8 clears $4B07 before scanning
+    for key, off in KEYBOARD_CONTROLS.items():
+        if key in pressed:
+            out[off] = 1
+    return out

@@ -14,6 +14,11 @@ Replays bit-identically (`scripts/grind.py check`). Drove the first grind:
 
 ## Corpus blind spots (open risks)
 
+- **Keyboard controls ($6CF8) unexercised** — the demo was played on the
+  joystick, so $6CF8 always takes its "joystick active, skip keyboard" path;
+  its WASD + cursor-key mapping (`stix.recovered.input_decode.keyboard_controls`,
+  status OBSERVED) can't be verified without a **keyboard-played demo**.
+  Ask the human for one recorded with the keyboard (W/A/S/Z + cursor keys).
 - Only the NNNNN trainer answers; the Y-paths patch the game body ($6213
   et al.) and are completely unexercised.
 - Single playthrough — unclear which hazards/levels/RNG branches it reaches.

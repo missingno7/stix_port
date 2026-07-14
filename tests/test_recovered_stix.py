@@ -13,7 +13,7 @@ sys.path.insert(0, str(PORT_ROOT))
 from stix.recovered.audio import voice1_frequency  # noqa: E402
 from stix.recovered.bitmap import plot_pixel  # noqa: E402
 from stix.recovered.bitmap import test_pixel as read_pixel  # noqa: E402 (avoid pytest test_* collection)
-from stix.recovered.input_decode import decode_joystick  # noqa: E402
+from stix.recovered.input_decode import decode_joystick, keyboard_controls  # noqa: E402
 from stix.recovered.sprites import sprite_to_grid  # noqa: E402
 
 DISK = PORT_ROOT / "assets" / "Stix.d64"
@@ -38,6 +38,16 @@ def test_decode_joystick_active_low():
     assert decode_joystick(0xFF ^ 0x10).fire
     both = decode_joystick(0xFF ^ 0x08 ^ 0x10)
     assert both.right and both.fire and not both.left
+
+
+def test_keyboard_controls_mapping():
+    # joystick active -> keyboard is ignored entirely
+    assert keyboard_controls(True, frozenset({"W", "A"})) == {}
+    # idle joystick -> mapped keys set their flags; $4B07 is reset first
+    assert keyboard_controls(False, frozenset()) == {0x07: 0}
+    got = keyboard_controls(False, frozenset({"W", "S", "CRSR_UD"}))
+    assert got == {0x07: 0, 0x02: 1, 0x05: 1, 0x08: 1}  # up, right, fire
+    assert "Q" not in got  # unmapped keys ignored
 
 
 def test_sprite_to_grid():

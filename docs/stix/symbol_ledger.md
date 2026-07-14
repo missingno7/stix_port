@@ -40,9 +40,23 @@ native tick driver (`stix/native/`) will reproduce:
 | $6B80 | bitmap_plot $70D9 | draw: set-pixel |
 | $6D87 | poke_cia1_pra $763A | (CIA port select) |
 
+The tick's own sequence (linear at $66C5): read_joystick $739E →
+keyboard_controls $6CF8 → $7183 (hazard move: sprites 6/7 via $D41B random,
+reads player pos) → $7479 (SMC) → collision $73EC (set $4B2B) → $6AAC (SMC
+move) → collision → $6C41 (move sprite 3: $D006/7) → collision.
+
+Tick children understood (roles, not yet all recovered):
+- $6CF8 = keyboard fallback controls (WASD+cursor via $DC00/$DC01 matrix
+  scan; skipped when joystick active). OBSERVED — demo doesn't exercise it.
+- $7183 (96 insns) = hazard AI move for sprites 6/7 (writes $D02D/$D02E,
+  reads $D41B random + player pos $4B00/01); dispatches to SMC sub-routines
+  $72C2/$72F4/$7316/$7338/$735A (REFUSED mid_insn — self-modifying).
+- $6C41 (39 insns) = move hazard sprite 3 ($D006/$D007/$D010 MSB).
+- $7479, $6AAC = REFUSED mid_insn (self-modifying dispatchers).
+
 Big ORACLE_PASSING routines not yet disassembled: $6703 (228 insns, $67xx
-draw region), $6237 (239 insns). $66xx is the top of the tick — the next
-target for understanding the whole-frame flow.
+draw region), $6237 (239 insns). The SMC dispatchers need runtime_code
+analysis; the $D41B-random hazard AI is the core game behaviour.
 
 ## Runtime state model — the $4B00 game-state page (earned field names)
 
