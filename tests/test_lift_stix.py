@@ -15,6 +15,13 @@ needs_assets = pytest.mark.skipif(not DISK.exists(), reason="assets/Stix.d64 mis
 # $73EC fires ~2.4x/frame, $7183 (96 insns, 7 call deps) and $739E ~0.8x/frame
 HOT_ENTRIES = (0x73EC, 0x7183, 0x739E)
 
+# Routines that use the 6502 BIT-skip overlap idiom ($2C/$24 swallowing the
+# next op).  These were REFUSED as "mid_insn" until the lifter learned to
+# allow overlapping instruction decodes (2026-07-14); the hazard-AI movers
+# ($72C2/$72F4/$7316/$7338), a dispatcher ($7479), and the big move routine
+# ($6AAC, 217 insns) all fire during normal play.
+OVERLAP_ENTRIES = (0x72C2, 0x72F4, 0x7316, 0x7338, 0x7479, 0x6AAC)
+
 
 @needs_assets
 def test_lifted_stix_routines_pass_oracle():
@@ -40,5 +47,35 @@ def test_lifted_stix_routines_pass_oracle():
 
     assert oracle.stats.verified >= 30, (
         f"expected the hot routines to fire; verified={oracle.stats.verified}"
+    )
+    assert not oracle.stats.diverged
+
+
+@needs_assets
+def test_bit_skip_overlap_routines_pass_oracle():
+    """The BIT-skip-idiom routines (formerly REFUSED mid_insn) lift and run
+    byte-exact against the ASM oracle over real gameplay."""
+    import stix
+    from c64_re.hooks import HookRegistry
+    from c64_re.lift.emit import lift_and_compile
+    from c64_re.runtime import run_frames
+    from c64_re.verification import install_live_verifier
+
+    rt = stix.boot(PORT_ROOT / "assets")
+    stix.start_game(rt)
+    run_frames(rt, 50)
+
+    registry = HookRegistry()
+    for entry in OVERLAP_ENTRIES:
+        hook, _, scan = lift_and_compile(rt.mem.rb, entry)
+        assert scan.overlaps >= 1, f"${entry:04X} expected the BIT-skip overlap"
+        registry.replace(entry, f"lifted_{entry:04X}")(hook)
+    registry.install(rt.cpu)
+
+    oracle = install_live_verifier(rt, strict_cycles=True)
+    run_frames(rt, 30)
+
+    assert oracle.stats.verified >= 30, (
+        f"expected the overlap routines to fire; verified={oracle.stats.verified}"
     )
     assert not oracle.stats.diverged

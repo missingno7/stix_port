@@ -43,20 +43,36 @@ native tick driver (`stix/native/`) will reproduce:
 
 The tick's own sequence (linear at $66C5): read_joystick $739E →
 keyboard_controls $6CF8 → $7183 (hazard move: sprites 6/7 via $D41B random,
-reads player pos) → $7479 (SMC) → collision $73EC (set $4B2B) → $6AAC (SMC
-move) → collision → $6C41 (move sprite 3: $D006/7) → collision.
+reads player pos) → $7479 → collision $73EC (set $4B2B) → $6AAC (move) →
+collision → $6C41 (move sprite 3: $D006/7) → collision.
 
-Tick children understood (roles, not yet all recovered):
-- $6CF8 = keyboard fallback controls (WASD+cursor via $DC00/$DC01 matrix
-  scan; skipped when joystick active). OBSERVED — demo doesn't exercise it.
+Correction (2026-07-14): the routines below were mislabelled "SMC" — they
+are NOT self-modifying. They use the 6502 **BIT-skip idiom** ($2C = BIT abs
+swallows the next 2 bytes, $24 = BIT zp swallows 1) so a branch "un-skips" a
+constant load; the same bytes decode two ways by entry point. The lifter now
+allows overlapping instruction decodes, so all of these are ORACLE_PASSING
+(verified byte-exact + strict cycles over real level-1 and level-2 play,
+`tests/test_lift_stix.py::test_bit_skip_overlap_routines_pass_oracle`):
+
+Tick children understood (roles, now ORACLE_PASSING lifted):
+- $6CF8 = keyboard controls (WASD $4B02-05 + CRSR/F5 $4B07/08/0B via matrix;
+  skipped when joystick active — see docs/stix/controls.md). OBSERVED.
 - $7183 (96 insns) = hazard AI move for sprites 6/7 (writes $D02D/$D02E,
-  reads $D41B random + player pos $4B00/01); dispatches to SMC sub-routines
-  $72C2/$72F4/$7316/$7338/$735A (REFUSED mid_insn — self-modifying).
+  reads $D41B random + player pos $4B00/01); dispatches to the BIT-skip
+  movers $72C2/$72F4/$7316/$7338/$735A (each lifts, overlaps=1..3).
 - $6C41 (39 insns) = move hazard sprite 3 ($D006/$D007/$D010 MSB).
-- $7479, $6AAC = REFUSED mid_insn (self-modifying dispatchers).
+- $7479 (41 insns, BIT-skip), $6AAC (217 insns, BIT-skip) = movers, lifted.
+- $653C (27 insns, BIT-skip $2C at $655B) = periodic BCD score/bonus
+  accumulator: INC $4B20; every 256th call adds 20 (or 2 when $4B06==2, via
+  the BIT-skip) to the 24-bit BCD counter $4B2E-30; fires during drawing.
+
+Census over the executed code region jumped from ~54% to **91.2% liftable**
+(52/57 JSR targets; 11 use the BIT-skip idiom). Remaining refusals: 4 brk +
+1 bad_opcode (data bytes misread as call targets).
 
 Big ORACLE_PASSING routines not yet disassembled: $6703 (228 insns, $67xx
-draw region), $6237 (239 insns). The SMC dispatchers need runtime_code
+draw region), $6237 (239 insns). Any true runtime-patched code would need
+runtime_code
 analysis; the $D41B-random hazard AI is the core game behaviour.
 
 ## Runtime state model — the $4B00 game-state page (earned field names)

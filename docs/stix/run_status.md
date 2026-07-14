@@ -44,6 +44,21 @@ built to surface. Grind driver: `python scripts/grind.py`.
 
 ## Recent findings (newest first)
 
+- 2026-07-14 (session 7) — **Lifter learned the 6502 BIT-skip idiom.** The
+  hottest "missing" routines were not self-modifying code (as the ledger
+  guessed) but the `$2C`/`$24` BIT-skip trick (a branch lands inside a BIT
+  operand, so bytes decode two ways). The lifter previously refused these as
+  `mid_insn`; it now allows overlapping instruction decodes. Result: the
+  executed-code census jumped ~54% → **91.2% liftable** (52/57), and the top
+  10 formerly-refused routines — the hazard-AI movers $72C2/$72F4/$7316/
+  $7338/$735A/$7479/$6AAC (217 insns) and the score accumulator $653C
+  (28,591 calls in one demo) — all lift and pass the differential oracle
+  byte-exact + strict cycles (2,088+ verified calls, 0 divergences across
+  level-1 and level-2 play). Locked in by `test_lift_stix.py` and a
+  framework regression `test_lift.py::test_bit_skip_overlap_*`. Also decoded
+  the keyboard controls ($6CF8) and fixed the viewer controls docs — see
+  docs/stix/controls.md (W/Z/A/S move, PageUp/PageDown = the two draw
+  speeds; keyboard-only controls are ignored while the joystick moves).
 - 2026-07-14 (session 6) — Recovery-proper started: `stix/` restructured to
   the pre2 layer layout. First recovered source — pure functions in
   `stix/recovered/` (input/audio/sprites/bitmap), the $4B00 state model as a

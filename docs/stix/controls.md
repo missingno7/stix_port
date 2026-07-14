@@ -42,8 +42,21 @@ cursor keys, so only draw-speed-1 is reachable in the viewer today.
 
 ## Playing in the viewer
 
-Reliable scheme: **arrow keys = move, SPACE (or Right-Ctrl) = draw.** This
-is what `demo_run1` used. Mixing keyboard-letter movement (`W/Z/A/S`) with
-SPACE works but the shared-column timing is fiddly; the joystick path is
-clean. To also reach draw-speed-2, the viewer keymap would need the C64
-cursor keys added (host PageUp/PageDown or similar) — not yet wired.
+Two schemes; pick one, don't mix (see the gotcha below):
+
+- **Joystick (recommended, one draw speed):** arrow keys = move,
+  **SPACE or Right-Ctrl** = draw. This is what `demo_run1` used.
+- **Keyboard (both draw speeds):** `W/Z/A/S` = move, **PageUp** = draw-speed-1
+  (C64 CRSR↑↓ → `$4B08`), **PageDown** = draw-speed-2 (C64 CRSR←→ → `$4B07`),
+  `F5` = abort. The cursor keys are now mapped in the viewer keymap
+  (`player._build_keymap`) on PageUp/PageDown — host keys chosen not to
+  collide with any host key the game reads.
+
+**Gotcha — why you can't mix them:** `$6CF8` (keyboard) runs only when
+`$739E` (joystick) set nothing that tick (`ORA $4B02..$4B08 / BNE skip`).
+So the keyboard-only controls (draw-speed-2 `$4B07`, abort `F5`) are read
+**only while the joystick is completely idle**. Move with the joystick and
+they're ignored; move with `W/Z/A/S` and they work. Likewise, holding SPACE
+during keyboard play aliases to fire in `$739E`, which makes `$6CF8` skip —
+so SPACE breaks `W/Z/A/S` movement. Keyboard players draw with PageUp/PageDown,
+not SPACE.
