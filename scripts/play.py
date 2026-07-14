@@ -3,20 +3,19 @@
     python scripts/play.py                      # boot to the title screen
     python scripts/play.py --start              # through the trainer (all N)
     python scripts/play.py --start --trainer YNNNY
-    python scripts/play.py --record-demo                # cold-start demo (whole session)
-    python scripts/play.py --record-demo --demo-name run1
+    python scripts/play.py --start              # then press F11 to record
+    python scripts/play.py --record-demo        # cold-start demo (whole session)
     python scripts/play.py --play-demo artifacts/demos/demo_NAME_...
     python scripts/play.py --headless --play-demo ... [--frames N]
     python scripts/play.py --snapshot artifacts/gameplay.c64snap
     python scripts/play.py --no-replacements    # pure-ASM oracle mode
 
---record-demo records a true COLD-START demo: the whole session from
-power-on.  It starts the moment the window opens (no keypress needed) and
-skips the auto-trainer, so YOU drive everything — watch the decrunch, open
-the trainer with SHIFT, answer five Y/N, and play.  All of it is captured.
-Close the window to save (or F11 to stop/start a fresh take).  --demo-name
-sets the name (default "stix").  (--snapshot + --record-demo instead
-records a snapshot-anchored demo from that resume point.)
+To record: just press F11 in the viewer — it starts a timestamped demo
+(named "stix") and F11 again saves it.  No flag required.  --record-demo
+instead auto-starts a true COLD-START demo (the whole session from power-on:
+you drive the decrunch, the trainer via SHIFT + five Y/N, and play; close
+the window to save).  --demo-name sets the name; --snapshot + --record-demo
+records snapshot-anchored from that resume point.
 
 Sound plays through the speakers by default (the SID register stream,
 synthesized); pass --no-audio to mute.
