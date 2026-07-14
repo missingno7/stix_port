@@ -122,6 +122,7 @@ full). The $D41B-random hazard AI remains the core game behaviour to name.
 |---|---|---|---|
 | $080B | packed-PRG entry (BASIC `SYS 2059`) | OBSERVED | boot trace |
 | $0100-$015x | decrunch_stackpage_loop | OBSERVED | PC profile, boot frames 0-200 |
+| $00F1-$00FC | get_next_packed_byte (part of decrunch_stackpage_loop) | UNDERSTOOD | copied to ZP by the loader at $0810 (`LDA $25CF,X / STA $00F0,X / INX / BNE`); decrements a ZP counter that IS the operand of the following `LDA absolute` (backward self-referential fetch) — self-modifies EVERY call by design, for exactly 217 frames, then patches its own tail into `JMP $0C40` and never runs again. Confirmed 2026-07-14 via `RuntimeCodeWriteTracer`; NOT a gameplay dispatch slot — dos_re's bootstrap_lzexe.py distinction ("the source-port target should be the unpacked game logic, not the transient packer stub") applies directly. Excluded from `scripts/grind.py`'s census (`BOOTSTRAP_CEILING`) |
 | $0C40 | init_$0C40 (colors, clrscr, font copy, vectors) | OBSERVED | trace: $D020/$D021 writes, `JSR $E536`, copies char ROM $D800→$0800 |
 | $0C88 | vector_restore_loop (ROM $FD30 → $0314-$0333) | OBSERVED | write log; forced the $FD30 table into the shim ROM |
 | $0C90 | nmi_patch (vector low byte → $FEC1, RESTORE neutralized) | OBSERVED | write log |
@@ -131,7 +132,7 @@ full). The $D41B-random hazard AI remains the core game behaviour to name.
 | $2306-$230F | title_poll_loop (`LDA $DC01`; $7F→trainer, $EF→start fade) | OBSERVED | disassembly + input experiments |
 | $2324 | title_fade_step_$2324 (X = phase) | OBSERVED | callers $2303/$2313/$2354 |
 | $2352 | trainer_menu_$2352 (clrscr, 5 questions, patch game body) | OBSERVED | disassembly $2352-$2396 |
-| $23A5 | trainer_ask_$23A5 (copy line, GETIN until 'Y'/'N'; SMC at $23AD) | OBSERVED | disassembly |
+| $23A5 | trainer_ask_$23A5 (copy line, GETIN until 'Y'/'N'; SMC at $23AD) | OBSERVED | disassembly. Its own poll loop head is $23BE (registered in `stix/input_waits.py`'s INPUT_WAIT_ROUTINES) — an input-wait seam, excluded from lift/verify by design (a verified call runs with interrupts inhibited, so GETIN's IRQ-fed keyboard buffer never refills; confirmed 2026-07-14 by the hang it produced when installed) |
 | $618A, $6DE7, $6E26 | gameplay code region | GUESS | PC samples during play; no boundaries traced |
 
 ## Data / state

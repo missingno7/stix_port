@@ -4,11 +4,17 @@ recorded full-game demo (the oracle).
 Phases (each resumable; state in artifacts/grind/):
   check    replay the demo twice, confirm bit-identical final state
   census   replay once, collect the JSR targets the playthrough actually
-           calls + an executed-PC coverage bitmap  -> census.json
-  lift     scan every called target; LIFTED vs structured REFUSED  -> manifest
-  verify   install the lifted hooks, replay (windowed), route every call
-           through the differential oracle (strict cycle model); routines
-           with calls and zero divergences become ORACLE_PASSING
+           calls (excluding the decrunch bootstrap below $0800 and the
+           KERNAL at/above $A000 — neither is "the game's own code") + a
+           byte snapshot of each target captured the moment it's FIRST
+           called + an executed-PC coverage bitmap  -> census.json
+  lift     scan every called target FROM ITS OWN first-call snapshot (not
+           one shared image frame, which breaks for regions the game later
+           repurposes as data); LIFTED vs structured REFUSED  -> manifest
+  verify   install the lifted hooks (compiled from the same per-target
+           snapshots), replay (windowed), route every call through the
+           differential oracle (strict cycle model); routines with calls
+           and zero divergences become ORACLE_PASSING
   report   print the manifest summary + coverage
 
 Usage:
@@ -39,10 +45,47 @@ from c64_re.lift.manifest import LiftManifest, LiftRecord  # noqa: E402
 from c64_re.runtime import run_frames  # noqa: E402
 from c64_re.verification import install_live_verifier  # noqa: E402
 import stix  # noqa: E402
+from stix.input_waits import INPUT_WAIT_ROUTINES  # noqa: E402
 
 GRIND = PORT_ROOT / "artifacts" / "grind"
 CENSUS = GRIND / "census.json"
 MANIFEST = GRIND / "lift_manifest.json"
+
+# $0000-$07FF is the documented bootstrap region (decrunch_stackpage_loop,
+# session 1): the depacker is copied into zero page + stack page at $080D
+# and self-modifies on every single call for ~217 frames by DESIGN (each
+# call decrements a ZP counter that IS the operand of the next LDA -- a
+# backward-walking self-referential byte fetch), then patches its own tail
+# into a JMP to the real game init ($0C40) and never runs again. This is
+# the "transient packer stub" dos_re's bootstrap_lzexe.py already draws the
+# line around ("the source-port target should be the unpacked game logic,
+# not the transient packer stub") -- not a runtime_code.py polyvariant
+# dispatch slot (no small fixed set of named bodies; it's a continuous
+# decompression side effect). Excluded from recovery census/lift/verify:
+# it isn't a game routine and every "call" has different bytes by design,
+# so lifting it would never be more than a permanent false SMC divergence.
+BOOTSTRAP_CEILING = 0x0800
+
+# The shim KERNAL ($E000+): games legitimately JSR into real entry points
+# there, but c64_re.kernal intercepts them via service_hooks (or a real JMP
+# (ind) through the RAM vector table) before the static ROM bytes are ever
+# decoded — those bytes are just the JAM filler / dispatch stub c64_re.kernal
+# already models and tests. Not "the game's own code"; excluded the same way
+# as the bootstrap region.
+KERNAL_FLOOR = 0xA000
+
+# Bytes captured around each target the moment it is FIRST called, so lifting
+# reads the code as it stood when it was actually valid — not a single global
+# snapshot frame, which breaks for regions the game later repurposes as data
+# (Stix's title/trainer code at $22xx-$23xx is overwritten by gameplay data
+# once the title phase ends; a frame-900 image sees only the leftover bytes).
+SNAPSHOT_WINDOW = 1024
+
+# Routines whose body contains an input-wait poll (stix.input_waits) are
+# excluded too: a verified call runs with interrupts inhibited for its whole
+# duration, so an IRQ-fed poll loop (e.g. GETIN waiting on SCNKEY) can never
+# see its condition become true and spins to the oracle's timeout. Recover
+# these by hand; the lift/verify pipeline is the wrong tool for them.
 
 
 def state_digest(rt) -> str:
@@ -102,12 +145,21 @@ def cmd_census(args) -> int:
     demo = load_demo(args.demo)
     rt = demo.make_runtime()
     called: set[int] = set()
+    first_frame: dict[int, int] = {}
+    snapshots: dict[int, str] = {}
     cov = bytearray(0x10000)
 
     def tracer(cpu, pc, op):
         cov[pc] = 1
         if op == 0x20:  # JSR: record the callee entry
-            called.add(cpu.mem.rb((pc + 1) & 0xFFFF) | (cpu.mem.rb((pc + 2) & 0xFFFF) << 8))
+            target = cpu.mem.rb((pc + 1) & 0xFFFF) | (cpu.mem.rb((pc + 2) & 0xFFFF) << 8)
+            if (BOOTSTRAP_CEILING <= target < KERNAL_FLOOR
+                    and target not in INPUT_WAIT_ROUTINES and target not in called):
+                called.add(target)
+                first_frame[target] = rt.machine.vic.frame
+                lo = target & 0xFFFF
+                hi = min(lo + SNAPSHOT_WINDOW, 0x10000)
+                snapshots[target] = bytes(rt.mem.ram[lo:hi]).hex()
 
     rt.cpu.trace_fn = tracer
     t0 = time.time()
@@ -115,16 +167,34 @@ def cmd_census(args) -> int:
     rt.cpu.trace_fn = None
     exercised = sum(cov)
     print(f"census: replayed {reached} frames in {time.time() - t0:.0f}s, "
-          f"{len(called)} distinct JSR targets, {exercised} bytes of code touched")
+          f"{len(called)} distinct JSR targets, {exercised} bytes of code touched "
+          f"(excluding bootstrap <${BOOTSTRAP_CEILING:04X} and KERNAL >=${KERNAL_FLOOR:04X})")
     GRIND.mkdir(parents=True, exist_ok=True)
     CENSUS.write_text(json.dumps({
         "demo": str(Path(args.demo).name),
         "frames": reached,
         "called_targets": sorted(called),
+        "first_frame": {str(k): v for k, v in first_frame.items()},
+        "snapshots": {str(k): v for k, v in snapshots.items()},
         "exercised_bytes": exercised,
     }, indent=2), encoding="utf-8")
     print(f"  -> {CENSUS}")
     return 0
+
+
+def _target_reader(census: dict, entry: int, fallback_rt):
+    """A byte reader over the target's first-call snapshot, so lift/verify see
+    the code as it stood when it was actually valid (not one global frame)."""
+    snap_hex = census.get("snapshots", {}).get(str(entry))
+    if snap_hex is None:
+        return fallback_rt.mem.rb  # older census.json without snapshots
+    window = bytes.fromhex(snap_hex)
+    base = entry & 0xFFFF
+
+    def read(addr: int) -> int:
+        off = (addr - base) & 0xFFFF
+        return window[off] if off < len(window) else fallback_rt.mem.rb(addr)
+    return read
 
 
 # ---- lift --------------------------------------------------------------------------
@@ -132,8 +202,9 @@ def cmd_lift(args) -> int:
     census = json.loads(CENSUS.read_text(encoding="utf-8"))
     targets = census["called_targets"]
     demo = load_demo(args.demo) if args.demo else None
-    # a fresh cold runtime gives the code image as it stands after decrunch;
-    # the demo runtime is the honest source (self-modified code included).
+    # rt is only the fallback runtime for entries an older census.json (from
+    # before per-target snapshots) didn't capture; normally every target
+    # scans from its own first-call snapshot instead (see _target_reader).
     rt = demo.make_runtime() if demo else None
     if rt is not None:
         replay(demo, rt, max_frames=args.image_frame)
@@ -142,7 +213,11 @@ def cmd_lift(args) -> int:
         stix.start_game(rt)
         run_frames(rt, 60)
     manifest = LiftManifest.load(MANIFEST)
-    scans = {entry: scan_function(rt.mem.rb, entry, max_instructions=args.max_instructions)
+    # Each target is scanned from its OWN first-call snapshot (see cmd_census),
+    # not one shared image frame — a region the game later repurposes as data
+    # (e.g. Stix's title/trainer code) would otherwise scan garbage.
+    scans = {entry: scan_function(_target_reader(census, entry, rt), entry,
+                                  max_instructions=args.max_instructions)
              for entry in targets}
     # Tier-2: a function that JSRs to a nonlocal_return target is ALSO unsafe
     # to lift standalone (its own emitted emulate_call for that JSR hangs) —
@@ -179,16 +254,19 @@ def cmd_verify(args) -> int:
     else:
         entries = [r.entry for r in manifest.records.values() if r.status in ("LIFTED", "ORACLE_PASSING")]
 
-    # Phase 1: obtain the code image to lift from (a throwaway runtime replayed
-    # to image_frame, past decrunch and into gameplay).  The compiled hooks
-    # carry their own SMC guard bytes, so they no longer depend on this runtime.
+    # Phase 1: compile each entry's hook from ITS OWN first-call snapshot (see
+    # cmd_census / _target_reader) — not one shared image frame, which breaks
+    # for regions the game later repurposes as data.  ``img`` is only the
+    # fallback for entries an older census.json didn't snapshot.
+    census = json.loads(CENSUS.read_text(encoding="utf-8")) if CENSUS.exists() else {}
     img = demo.make_runtime()
     replay(demo, img, max_frames=args.image_frame)
     registry = HookRegistry()
     installed = {}
     for entry in sorted(set(entries)):
         try:
-            hook, _, scan = lift_and_compile(img.mem.rb, entry, max_instructions=args.max_instructions)
+            hook, _, scan = lift_and_compile(_target_reader(census, entry, img), entry,
+                                             max_instructions=args.max_instructions)
         except Exception as exc:  # noqa: BLE001
             print(f"  ${entry:04X} lift failed at verify time: {exc}")
             continue

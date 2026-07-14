@@ -5,15 +5,15 @@
 The original Stix disk boots and plays inside our new C64 recovery VM, and
 your demos (five now, including a full game and a level-2 run) are the
 reference oracle. Against the full 2-minute playthrough, the automatic
-lifter has turned **39 of the game's own routines into Python that was
-checked against the original on every call — 1,538 calls, zero unexpected
-differences** — while the game played through to game-over as a live
-hybrid. That is the first real slice of the game provably reproduced. The
-tool also flags what it can't safely reproduce yet — one true
-self-modifying-code spot — the honest "not done" signal the method is
-built to surface (two earlier "unsafe" guesses turned out to be a
-misdiagnosis, corrected this session — see below). Grind driver:
-`python scripts/grind.py`.
+lifter has turned **41 of the game's own routines into Python that was
+checked against the original on every single call it made — 1,541 calls,
+zero differences, over the whole demo** — while the game played through to
+game-over as a live hybrid. That is the first real slice of the game
+provably reproduced, and it is now a *clean* result: every routine the
+grind could not safely reproduce turned out to have a genuine, understood
+reason (a real self-modifying decompressor that only runs once at boot, a
+kernel entry point, or an input-poll routine) rather than an actual gap.
+Grind driver: `python scripts/grind.py`.
 
 ## Where we are
 
@@ -32,21 +32,67 @@ misdiagnosis, corrected this session — see below). Grind driver:
   against the ASM (player grid pos + the hit boolean the caller reads via
   the Z flag — 0 mismatches over 993 calls). Island manifest:
   `docs/stix/recovered_islands.md` (8 RECOVERED islands).
-- Lift manifest over the full demo: **39 ORACLE_PASSING**, 1 DIVERGED
-  (the one true SMC spot, $00F1), 11 LIFTED-not-fired, 18 REFUSED
-  (10 brk + 5 bad_opcode + 1 jmp_ind + the 2 non-local-return routines),
-  of 69 routines (`artifacts/grind/lift_manifest.json`).
+- Lift manifest over the full demo: **41 ORACLE_PASSING**, 0 DIVERGED,
+  11 LIFTED-not-fired, 2 REFUSED (the two non-local-return routines,
+  intentionally excluded — see below), of 54 routines counted (the census
+  now correctly excludes the boot decruncher, KERNAL entry points, and
+  input-poll routines — none of those are "the game's own logic" in the
+  sense recovery cares about; see `artifacts/grind/lift_manifest.json`).
 - Islands by status: 8 RECOVERED pure functions (7 hook-verified byte-exact,
-  collision shadow-verified); the 39 ORACLE_PASSING lifted artifacts remain
+  collision shadow-verified); the 41 ORACLE_PASSING lifted artifacts remain
   the refactoring queue.
 - Demo corpus: 5 recorded, 4 human-played and analyzed — see
   `docs/stix/demo_manifest.md` (full game, level 2, keyboard controls).
-- Open blockers: none. Findings to chase: $00F1 (runtime-patched SMC →
-  runtime_code machinery). $7166/$70E2 are RESOLVED this session (see
-  below) — they were never checkpoint seams; corrected in the ledger.
+- Open blockers: none. $00F1, $7166/$70E2, and the trainer's GETIN poll were
+  all RESOLVED this session — none were gaps, each had a distinct, evidenced
+  explanation; see findings below.
 
 ## Recent findings (newest first)
 
+- 2026-07-14 (session 7, part 3) — **Three more grind false-positives found
+  and fixed, all with distinct root causes; the full-demo sweep is now
+  completely clean.** Per the user's prompt, checked whether dos_re's
+  self-modifying-code tooling (`runtime_code.py`, already ported faithfully
+  to `c64_re`) applied to the one remaining DIVERGED entry, $00F1:
+  - **$00F1 is NOT a gameplay dispatch slot** — it's Stix's own boot
+    decruncher (already named `decrunch_stackpage_loop` in session 1!). The
+    loader at $0810 copies a 256-byte depacker template into zero page +
+    stack page; $00F1-$00FC is `get_next_packed_byte()`, which decrements a
+    ZP counter that IS the operand of the very next `LDA absolute` (a
+    backward-walking self-referential fetch) — it self-modifies on every
+    call BY DESIGN, for exactly 217 frames, then patches its own tail into
+    `JMP $0C40` and never runs again. This is exactly the distinction
+    dos_re's `bootstrap_lzexe.py` already draws: "the source-port target
+    should be the unpacked game logic, not the transient packer stub."
+    `runtime_code.py`'s polyvariant-dispatch model (Overkill's actual
+    pattern: a small fixed set of named alternate bodies at one address) is
+    the right tool for a *different*, not-yet-seen case in Stix. Fix:
+    `scripts/grind.py`'s census now excludes PC < $0800 (documented as
+    `BOOTSTRAP_CEILING`).
+  - **KERNAL entry points** ($E536/$E544/$FDA3/$FF9F/$FFEA/$FFE4) showed up
+    as REFUSED (`bad_opcode`/`jmp_ind`) because the game legitimately calls
+    them, but their static ROM bytes are JAM filler or a jump-table stub —
+    they're intercepted by `c64_re.kernal`'s service hooks before ever being
+    decoded as bytecode. Not the game's code; excluded (`KERNAL_FLOOR`).
+  - **The trainer's Y/N wait ($23A5) hangs a verified call**, and it's not a
+    bug in the oracle: $23A5's own loop (`$23BE`) polls KERNAL GETIN, which
+    only sees a keypress once the IRQ-driven `SCNKEY` refills the keyboard
+    buffer — but interrupts stay inhibited for the whole duration of a
+    verified call (documented in `verification.py`), so it spins to
+    timeout. Exactly the case that module's docstring predicted: "a routine
+    that spins waiting for an IRQ effect... is an input-wait/checkpoint
+    seam, not a hookable leaf." Registered in `stix/input_waits.py`
+    (`INPUT_WAIT_ROUTINES`); `scripts/grind.py` excludes it the same way.
+  - Also: `scripts/grind.py`'s single global `--image-frame` snapshot was
+    silently scanning STALE bytes for any routine the game repurposes as
+    data after use ($2324/$233E, title/trainer code later overwritten by
+    gameplay data) — fixed by capturing a per-target byte snapshot the
+    moment each routine is *first* called, so lift/verify always read the
+    code as it stood when it was actually valid. That alone recovered
+    $2324/$233E for free.
+  - Net result: **31 → 39 → 41 ORACLE_PASSING** across this session's three
+    fixes, ending at 0 unexpected divergences and 0 unexplained refusals
+    over the entire 6301-frame demo.
 - 2026-07-14 (session 7, part 2) — **Lifter learned the non-local-return
   idiom; $7166/$70E2 were misdiagnosed.** Installing every lifted routine
   across a new keyboard-controls demo hung: $6AAC's lifted hook nested a
@@ -147,15 +193,16 @@ misdiagnosis, corrected this session — see below). Grind driver:
    — each replays into the grind and widens verified coverage. Ask the human.
 2. Refactor the ORACLE_PASSING lifted artifacts into named pure rules
    (recover_one_routine), biggest/hottest first: $6703 (228 insns), $6237
-   (239 insns), $7183 (96 insns), $6AAC (217 insns). Name via evidence;
-   track with @oracle_link. $7166/$70E2 are understood (collision-abort)
-   but stay lift-excluded by design — recover them by hand instead.
-3. Chase the one remaining DIVERGED finding: wire $00F1 through
-   `runtime_code` (variant guarding) — the only true SMC spot found so far.
-4. Frame-boundary identification → frame verifier with a no-op candidate
+   (239 insns), $74D7 (206 insns), $6AAC (217 insns), $7183 (96 insns).
+   Name via evidence; track with @oracle_link. $7166/$70E2 are understood
+   (collision-abort) but stay lift-excluded by design — recover by hand.
+   $23A5 (trainer_ask) is understood but also excluded (input-wait) —
+   recover by hand alongside the other trainer routines.
+3. Frame-boundary identification → frame verifier with a no-op candidate
    (the frame oracle already proved the lifted hybrid pixel-exact for 100
    frames; extend it across the whole demo).
-5. Push liftable count up: the 5 brk + 1 jmp_ind refusals are likely
-   indirect-jump dispatchers — candidates for jump-table recovery, not
-   static lifting. 5 bad_opcode refusals are probably data bytes
-   misidentified as JSR targets by the census heuristic — check first.
+4. If a future game (or a not-yet-exercised Stix path) shows a genuine
+   polyvariant dispatch slot — a SMALL FIXED SET of named alternate bodies
+   installed at one address, Overkill's actual pattern — `c64_re.runtime_code`
+   is already ported and ready (RuntimeCodeSlot/Variant/Staticization,
+   RuntimeCodeWriteTracer for finding the installer). None found in Stix yet.
