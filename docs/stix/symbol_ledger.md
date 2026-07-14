@@ -13,7 +13,8 @@ Names earned from HARDWARE FACTS (register targets), not screen-watching:
 
 | Address | Name | Status | Evidence |
 |---|---|---|---|
-| $739E | read_joystick_port1 | OBSERVED | clears $4B02-08, reads $DC01 (joy1), LSRs 5 bits → dir/fire flags; fire-release path checks $4B09→$4B07 |
+| $739E | read_joystick_port1 | OBSERVED | clears $4B02-05,08,07,0B; reads $DC01, LSR×5 → UP$4B02/DOWN$4B03/LEFT$4B04/RIGHT$4B05/FIRE$4B08 (active-low). SPACE aliases to FIRE: prior routine leaves $DC00=$7F (col7), SPACE=(col7,row4)=fire bit4. See docs/stix/controls.md |
+| $6CF8 | read_keyboard_controls | OBSERVED | runs only when $739E set nothing; W$4B02/Z$4B03/A$4B04/S$4B05 (col1), CRSR-UD$4B08/CRSR-LR$4B07/F5$4B0B (col0); ends LDA#$7F JSR $763A (select col7 for SPACE=fire next tick) |
 | $73EC | player_vs_hazard_collision | OBSERVED | reads sprite0 pos ($D000/1/+MSB) → player grid $4B00/$4B01; compares vs sprites 6,7,3 ($D00C-F,$D006/7); $4B4A disables (DEC + ret 1) |
 | $72A0 | sprite_to_grid(x_reg=sprite sel) | OBSERVED | reads $D00C+x/$D00D+x + MSB $D010 → grid $4B3C/$4B3D = (sx9>>1)-$0B, sy-$30 |
 | $6A0B | sid_voice1_freq_from_$4B28 | OBSERVED | bit-reverses low nibble of $4B28→$4B18, hi nibble; writes SID $D402/$D403 (voice-1 freq) |
@@ -63,9 +64,10 @@ analysis; the $D41B-random hazard AI is the core game behaviour.
 | Address | Width | Name | Evidence |
 |---|---|---|---|
 | $4B00/$4B01 | u8,u8 | player_grid_x, player_grid_y | written by $73EC from sprite 0 |
-| $4B02/$4B03/$4B04/$4B05 | u8 | joy_up/down/left/right | set by $739E from $DC01 bits 0-3 |
-| $4B08 | u8 | joy_fire | set by $739E from $DC01 bit 4 |
-| $4B07/$4B09 | u8 | fire-release flag / its enable | $739E fire-not-pressed path |
+| $4B02/$4B03/$4B04/$4B05 | u8 | in_up/down/left/right | $739E joy bits 0-3 / $6CF8 keys W,Z,A,S |
+| $4B08 | u8 | in_draw1 (fire) | $739E joy bit 4 / SPACE (col7 alias) / CRSR-UD; the primary draw button, gates draw path $6B57 |
+| $4B07 | u8 | in_draw2 | $6CF8 CRSR-LR only; second draw speed, gates $6BB3 path (Qix fast/slow) |
+| $4B0B | u8 | in_abort (F5) | $6CF8 F5 only; read at $6077 → JMP $6223 |
 | $4B3C/$4B3D | u8,u8 | sprite_grid_x, sprite_grid_y | written by $72A0 |
 | $4B28 | u8 | sound_freq_source | read by $6A0B → SID voice-1 freq |
 | $4B18 | u8 | sound_freq_lo scratch | $6A0B; also = SID $D402 |
