@@ -96,3 +96,57 @@ def test_recovered_hooks_verify_against_demo():
     for name in ("sid_voice1_freq", "poke_cia1_pra", "sprite_to_grid", "read_joystick",
                  "bitmap_pixel_addr", "bitmap_plot", "bitmap_test"):
         assert verified[name] > 0, f"{name} never fired (no evidence)"
+
+
+@needs_demo
+def test_collision_logic_matches_asm_semantically():
+    """The pure collision logic ($73EC) — player grid position and the hit
+    boolean the caller reads via the Z flag — matches the ASM on every call
+    across the demo (a shadow check: capture inputs at entry, ASM outputs at
+    the RTS, compare)."""
+    from c64_re.input_demo import InputDemoPlayback
+    from c64_re.runtime import run_frames
+    from stix.input_waits import is_input_wait
+    from stix.recovered.collision import hazard_collision, player_grid_pos
+
+    demo = InputDemoPlayback.load(DEMO)
+    rt = demo.make_runtime()
+    while rt.machine.vic.frame < 900:
+        b = rt.machine.vic.frame
+        demo.apply_to_runtime(b, rt, single=is_input_wait(rt))
+        run_frames(rt, 1)
+
+    def sx9(m, n):
+        return (((m.rb(0xD010) >> n) & 1) << 8) | m.rb(0xD000 + 2 * n)
+
+    pending = {}
+    stats = {"checked": 0, "hits": 0, "mismatch": 0}
+    exits = {0x744E, 0x7454}
+
+    def trace(cpu, pc, op):
+        m = cpu.mem
+        if pc == 0x73EC:
+            pending["in"] = (
+                (sx9(m, 0), m.rb(0xD001)),
+                [(sx9(m, 6), m.rb(0xD00D)), (sx9(m, 7), m.rb(0xD00F)),
+                 (sx9(m, 3), m.rb(0xD007))],
+                m.rb(0x4B4A),
+            )
+        elif pc in exits and "in" in pending:
+            s0, haz, disable = pending.pop("in")
+            stats["checked"] += 1
+            if disable != 0:
+                if cpu.s.z != 0:      # disable path reports no hit
+                    stats["mismatch"] += 1
+                return
+            epx, epy = player_grid_pos(*s0)
+            ehit = hazard_collision(epx, epy, haz)
+            stats["hits"] += ehit
+            if (epx, epy) != (m.rb(0x4B00), m.rb(0x4B01)) or int(ehit) != cpu.s.z:
+                stats["mismatch"] += 1
+
+    rt.cpu.trace_fn = trace
+    run_frames(rt, 400)
+    assert stats["checked"] > 100, f"too few collision calls sampled: {stats}"
+    assert stats["hits"] > 0, "no collisions exercised in the window"
+    assert stats["mismatch"] == 0, f"pure collision diverged from ASM: {stats}"

@@ -33,9 +33,10 @@ class GameState(StructView):
     aux_input = U8(0x0B)              # $4B0B — cleared by $739E (unnamed use)
     sound_freq_lo = U8(0x18)          # $4B18 — $6A0B scratch (= SID V1 FREQ LO)
     sound_freq_source = U8(0x28)      # $4B28 — $6A0B source byte
+    hazard_hit_code = U8(0x2B)        # $4B2B — set (1/5/1) by the tick on a hit
     sprite_grid_x = U8(0x3C)          # $4B3C — written by $72A0
     sprite_grid_y = U8(0x3D)          # $4B3D
-    collision_disable = U8(0x4A)      # $4B4A — $73EC skip/countdown
+    collision_disable = U8(0x4A)      # $4B4A — $73EC invuln-frame countdown
 
     def __init__(self, source):
         super().__init__(coerce_backend(source, GAME_STATE_BASE), 0)

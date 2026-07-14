@@ -25,13 +25,17 @@ built to surface. Grind driver: `python scripts/grind.py`.
   `poke_cia1_pra`, `bitmap_pixel_addr`, `bitmap_plot`, `bitmap_test`
   (0 divergences over 1300+ frames, `tests/test_recovered_stix.py`;
   the bitmap ones required reproducing the address ADC's exact carry +
-  overflow and the JSR $709F freed-stack scratch). Island manifest:
-  `docs/stix/recovered_islands.md` (6 RECOVERED).
+  overflow and the JSR $709F freed-stack scratch). Plus the **collision
+  gameplay logic** ($73EC) recovered as pure functions and SHADOW-VERIFIED
+  against the ASM (player grid pos + the hit boolean the caller reads via
+  the Z flag — 0 mismatches over 993 calls). Island manifest:
+  `docs/stix/recovered_islands.md` (8 RECOVERED islands).
 - Lift manifest over the full demo: **31 ORACLE_PASSING** (1,475 instr,
   3,353 code bytes proven byte-exact), 3 DIVERGED, 8 LIFTED-not-fired,
   27 REFUSED, of 69 routines (`artifacts/grind/lift_manifest.json`).
-- Islands by status: 6 RECOVERED (verified) pure functions; the 31
-  ORACLE_PASSING lifted artifacts remain the refactoring queue.
+- Islands by status: 8 RECOVERED pure functions (7 hook-verified byte-exact,
+  collision shadow-verified); the 31 ORACLE_PASSING lifted artifacts remain
+  the refactoring queue.
 - Demo corpus: 1 — `demo_run1_20260714_202142` (cold-start, 6301 frames,
   power-on → trainer → full game → game-over; replays bit-identically).
 - Open blockers: none. Findings to chase: $00F1 (runtime-patched SMC →

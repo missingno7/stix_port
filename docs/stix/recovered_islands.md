@@ -18,3 +18,5 @@ architecture).
 | `$70D9` | `recovered.bitmap.plot_pixel` | RECOVERED | — | set a bitmap pixel: byte | column_mask |
 | `$72A0` | `recovered.sprites.sprite_to_grid` | RECOVERED | — | VIC sprite (x9,y) -> game grid (x,y): ((x9>>1)-0x0B, y-0x30) |
 | `$739E` | `recovered.input_decode.decode_joystick` | RECOVERED | — | CIA1 port B (joystick 1, active-low bits 0-4) -> direction/fire |
+| `$73EC` | `recovered.collision.hazard_collision` | RECOVERED | — | player cell vs hazard sprites -> hit (any hazard shares the cell) |
+| `$73EC` | `recovered.collision.player_grid_pos` | RECOVERED | — | sprite 0 (x9,y) -> player grid pos ((x9>>1)+5, y+8) |
