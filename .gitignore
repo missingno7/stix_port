@@ -1,0 +1,30 @@
+# ---- game IP — NEVER commit -------------------------------------------------
+# The original disk image and anything derived that embeds the game's code,
+# data, or graphics.  (You must own a legal copy to build this port.)
+assets/
+
+# Generated evidence: rendered frames (game graphics), machine snapshots
+# (game RAM images), recorded demos (only meaningful with the game asset),
+# and grind outputs.  All reproducible from the asset + the code.
+artifacts/
+
+# machine snapshots wherever they land
+*.c64snap
+
+# ---- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+build/
+dist/
+
+# virtualenvs
+.venv/
+venv/
+
+# ---- OS ---------------------------------------------------------------------
+.DS_Store
+Thumbs.db
