@@ -28,11 +28,32 @@ Names earned from HARDWARE FACTS (register targets), not screen-watching:
 | $70E2 | check_move_axis_collisions | OBSERVED | dispatches up to 3 calls to $7166 (diagonal corners) based on $4B04/$4B05 (move direction); each call can cascade-return past this routine entirely |
 | $6703, $6237 | large gameplay routines (228, 239 insns) | OBSERVED | ORACLE_PASSING (both now lift+verify; $6237 not yet call-graph-placed) |
 
-## Game tick structure (from the caller graph, ~68 ticks / 120 frames)
+## Game tick structure — CORRECTED (session 8): it's an IRQ, not a main-loop call
 
-The main per-tick routine lives around $66xx and sequences the subsystems
-(each caller fires ~once per tick unless noted); this is the call order the
-native tick driver (`stix/native/`) will reproduce:
+**The game tick is a CIA-timer IRQ, not called from the main loop.** The
+gameplay init at $6000 writes the IRQ vector $0314/$0315 = **$66B8** and
+enables the timer; the whole game step then runs inside that interrupt
+(~1 tick/frame). This is why $66C5/$739E have no JSR callers — they're
+reached from the IRQ. The handler:
+
+    $66B8  LDA $4B0C / BNE $66FA      re-entrancy guard (skip if a tick runs)
+    $66C5  INC $4B25                  tick counter        <- SEED (real-tick start)
+           JSR $739E / $6CF8          input decode -> $4B02-$4B0B
+           JSR $7183 / $7479          hazard AI + move (sprites 6/7)
+           JSR $73EC                  collision -> $4B2B=1
+           JSR $6AAC / $73EC          move + collision -> $4B2B=5
+           JSR $6C41 / $73EC          move sprite 3 + collision -> $4B2B=1
+    $66F5  STA $4B0C(=0)              tick done           <- COMMIT (real ticks only)
+    $66FA  LDA $DC0D / PLA../RTI      ack + return
+
+Sprite positions are written **directly to VIC** ($D00C-$D010, from the
+BIT-skip movers $72CC/$72EA/$72F3) — no RAM shadow — so native gameplay
+state = the $4B00 page + the VIC sprite registers. This tick is the
+equivalence seam wired in `stix/tick.py`; the full game is recorded to
+`artifacts/ticks/run1.tickdemo` (4882 ticks). The draw routines ($6703 etc.)
+are NOT in this IRQ — drawing is a separate phase (the table below is the
+older caller-graph view; the IRQ handler above is authoritative for the
+per-tick sequence):
 
 | Caller | Calls | Role |
 |---|---|---|

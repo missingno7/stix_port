@@ -49,6 +49,23 @@ Grind driver: `python scripts/grind.py`.
 
 ## Recent findings (newest first)
 
+- 2026-07-15 (session 8) — **The game-tick equivalence harness is built and
+  the whole game is captured as the play_native target.** Discovered from
+  the oracle that Stix's game step is a **CIA-timer IRQ** (handler $66B8),
+  not a main-loop call — which is why the tick sequencer had no JSR callers
+  and corrects the old ledger. The real-tick body is $66C5→$66F5 (framed by
+  the $4B0C re-entrancy guard). Wired that seam into `stix/tick.py` for
+  `c64_re.tick_demo`: seed at $66C5, commit at $66F5, input captured at
+  $66CB ($4B02-$4B0B), digest over the $4B00 page + VIC sprite registers.
+  Recorded the full-game demo to `artifacts/ticks/run1.tickdemo`: **4882
+  ticks, every one of the 4882 digests distinct** — the mode-independent
+  reference a VM-less native tick must reproduce byte-for-byte. Proven
+  deterministic (record twice = identical) and save/load round-trips
+  (`tests/test_tick_stix.py`). Driver: `python scripts/tickdemo.py record`.
+  Also found the key native-tick design constraint: sprite positions are
+  written directly to VIC ($D00C-$D010) with no RAM shadow, so native state
+  must carry the VIC sprite registers, seeded from a full snapshot (not the
+  RAM-only tick seed) — documented in `stix/native/__init__.py`.
 - 2026-07-14 (session 7, part 3) — **Three more grind false-positives found
   and fixed, all with distinct root causes; the full-demo sweep is now
   completely clean.** Per the user's prompt, checked whether dos_re's
@@ -188,19 +205,27 @@ Grind driver: `python scripts/grind.py`.
 
 ## Next targets (evidence-ordered)
 
-1. Grow the demo corpus: more played demos covering paths these five miss
-   (Y trainer answers, each hazard, death/respawn, game-over from level 2+)
-   — each replays into the grind and widens verified coverage. Ask the human.
-2. Refactor the ORACLE_PASSING lifted artifacts into named pure rules
-   (recover_one_routine), biggest/hottest first: $6703 (228 insns), $6237
-   (239 insns), $74D7 (206 insns), $6AAC (217 insns), $7183 (96 insns).
-   Name via evidence; track with @oracle_link. $7166/$70E2 are understood
-   (collision-abort) but stay lift-excluded by design — recover by hand.
-   $23A5 (trainer_ask) is understood but also excluded (input-wait) —
-   recover by hand alongside the other trainer routines.
-3. Frame-boundary identification → frame verifier with a no-op candidate
-   (the frame oracle already proved the lifted hybrid pixel-exact for 100
-   frames; extend it across the whole demo).
+The equivalence harness now exists (session 8), so the path to play_native
+is concrete: build the native tick, and `scripts/tickdemo.py verify` reports
+the exact first diverging tick as the worklist until it reproduces all 4882.
+
+1. **Native state + tick skeleton** (`stix/native/`): a `NativeState` =
+   RAM image + VIC sprite-register array, seeded from a full snapshot at the
+   $66C5 seam (not the RAM-only tick seed — sprites live in VIC); `inject`
+   writes the recorded input cells; `tick` composes recovered functions in
+   the $66B8 handler's order, raising `HybridGap` for the not-yet-recovered
+   moves. `verify` then diverges at the first gap = the recovery target.
+2. Recover the tick's routines as pure rules (recover_one_routine), in tick
+   order: $739E/$6CF8 input (already recovered) → hazard AI $7183 + its
+   BIT-skip movers $72C2/$72F4/$7316/$7338/$735A → the $D41B RNG (carry the
+   SID OSC3 LFSR in native state or record as a sideband) → $73EC collision
+   (recovered) → move $6AAC + the $7166/$70E2 collision-abort cascade
+   (hand-recover, lift-excluded) → move sprite 3 $6C41. Each verified by the
+   differential hook oracle first, then contributes a native tick that moves
+   the `tickdemo verify` frontier forward.
+3. Grow the demo corpus: more played demos (Y trainer answers, each hazard,
+   death/respawn, game-over) — each records its own tickdemo and widens the
+   verified state space. Ask the human.
 4. If a future game (or a not-yet-exercised Stix path) shows a genuine
    polyvariant dispatch slot — a SMALL FIXED SET of named alternate bodies
    installed at one address, Overkill's actual pattern — `c64_re.runtime_code`
