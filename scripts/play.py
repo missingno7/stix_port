@@ -18,6 +18,9 @@ Close the window to save (or F11 to stop/start a fresh take).  --demo-name
 sets the name (default "stix").  (--snapshot + --record-demo instead
 records a snapshot-anchored demo from that resume point.)
 
+Sound plays through the speakers by default (the SID register stream,
+synthesized); pass --no-audio to mute.
+
 Controls: arrows + Right-Ctrl = joystick port 1 (the game's port); the C64
 keyboard is mapped 1:1.  Hotkeys: F10 screenshot, F11 demo stop/restart,
 F12 snapshot, F9 pause.  At the title: SHIFT opens the trainer, five Y/N
