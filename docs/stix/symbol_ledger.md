@@ -23,6 +23,27 @@ Names earned from HARDWARE FACTS (register targets), not screen-watching:
 | $763A | poke_cia1_pra | OBSERVED | STA $DC00 (joystick/keyboard column select) |
 | $6703, $6237 | large gameplay routines (228, 239 insns) | OBSERVED | ORACLE_PASSING; not yet disassembled in full |
 
+## Game tick structure (from the caller graph, ~68 ticks / 120 frames)
+
+The main per-tick routine lives around $66xx and sequences the subsystems
+(each caller fires ~once per tick unless noted); this is the call order the
+native tick driver (`stix/native/`) will reproduce:
+
+| Caller | Calls | Role |
+|---|---|---|
+| $66C5 | read_joystick $739E | input phase |
+| $66D1, $66DE, $66EB | collision $73EC ×3 | hazard collision (3 hazards) |
+| $680D | sid_voice1_freq $6A0B | audio |
+| $719F, $7203 | sprite_to_grid $72A0 | sprite→grid (2 sprites) |
+| $6955 (×210!), $68A5, $67D2 | bitmap_test $697F | draw: read-pixel inner loops |
+| $6B05, $6BD0 | bitmap_pixel_addr $709F | draw: address setup |
+| $6B80 | bitmap_plot $70D9 | draw: set-pixel |
+| $6D87 | poke_cia1_pra $763A | (CIA port select) |
+
+Big ORACLE_PASSING routines not yet disassembled: $6703 (228 insns, $67xx
+draw region), $6237 (239 insns). $66xx is the top of the tick — the next
+target for understanding the whole-frame flow.
+
 ## Runtime state model — the $4B00 game-state page (earned field names)
 
 | Address | Width | Name | Evidence |
