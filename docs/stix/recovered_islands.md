@@ -12,9 +12,9 @@ architecture).
 
 | ASM boundary | Function | Status | Merge target | Contract |
 |---|---|---|---|---|
-| `$697F` | `recovered.bitmap.test_pixel` | OBSERVED | — | test a bitmap pixel: byte & column_mask (nonzero = set) |
+| `$697F` | `recovered.bitmap.test_pixel` | RECOVERED | — | test a bitmap pixel: byte & column_mask (nonzero = set) |
 | `$6A0B` | `recovered.audio.voice1_frequency` | RECOVERED | — | game freq byte -> SID voice-1 (FREQ LO = bit-reversed low nibble, FREQ HI = high nibble) |
-| `$709F` | `recovered.bitmap.bitmap_byte_addr` | OBSERVED | — | pixel (x,y) -> (byte_addr, row_in_cell=y&7, col_pair=x&3) via row-base table |
-| `$70D9` | `recovered.bitmap.plot_pixel` | OBSERVED | — | set a bitmap pixel: byte | column_mask |
+| `$709F` | `recovered.bitmap.bitmap_byte_addr` | RECOVERED | — | pixel (x,y) -> (byte_addr, row_in_cell=y&7, col_pair=x&3) via row-base table |
+| `$70D9` | `recovered.bitmap.plot_pixel` | RECOVERED | — | set a bitmap pixel: byte | column_mask |
 | `$72A0` | `recovered.sprites.sprite_to_grid` | RECOVERED | — | VIC sprite (x9,y) -> game grid (x,y): ((x9>>1)-0x0B, y-0x30) |
 | `$739E` | `recovered.input_decode.decode_joystick` | RECOVERED | — | CIA1 port B (joystick 1, active-low bits 0-4) -> direction/fire |

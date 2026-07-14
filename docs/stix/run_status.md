@@ -19,16 +19,19 @@ built to surface. Grind driver: `python scripts/grind.py`.
   follows the pre2_port layer layout (recovered/ bridge/ native/ hooks.py
   input_waits.py verification.py probes/).
 - Native %: first recovered islands landed. **6 recovered functions**
-  (`stix/recovered/`), **4 wired as verified hooks and proven BYTE-EXACT
-  against the demo oracle** (`sid_voice1_freq`, `read_joystick`,
-  `sprite_to_grid`, `poke_cia1_pra` — 0 divergences over 1300 frames,
-  `tests/test_recovered_stix.py`). Island manifest:
-  `docs/stix/recovered_islands.md` (3 RECOVERED, 3 OBSERVED).
+  (`stix/recovered/`), **7 wired as verified hooks and proven BYTE-EXACT
+  against the demo oracle** — I/O + audio + the whole hires-bitmap pixel
+  subsystem: `sid_voice1_freq`, `read_joystick`, `sprite_to_grid`,
+  `poke_cia1_pra`, `bitmap_pixel_addr`, `bitmap_plot`, `bitmap_test`
+  (0 divergences over 1300+ frames, `tests/test_recovered_stix.py`;
+  the bitmap ones required reproducing the address ADC's exact carry +
+  overflow and the JSR $709F freed-stack scratch). Island manifest:
+  `docs/stix/recovered_islands.md` (6 RECOVERED).
 - Lift manifest over the full demo: **31 ORACLE_PASSING** (1,475 instr,
   3,353 code bytes proven byte-exact), 3 DIVERGED, 8 LIFTED-not-fired,
   27 REFUSED, of 69 routines (`artifacts/grind/lift_manifest.json`).
-- Islands by status: 3 RECOVERED (verified) + 3 OBSERVED pure functions;
-  the 31 ORACLE_PASSING lifted artifacts remain the refactoring queue.
+- Islands by status: 6 RECOVERED (verified) pure functions; the 31
+  ORACLE_PASSING lifted artifacts remain the refactoring queue.
 - Demo corpus: 1 — `demo_run1_20260714_202142` (cold-start, 6301 frames,
   power-on → trainer → full game → game-over; replays bit-identically).
 - Open blockers: none. Findings to chase: $00F1 (runtime-patched SMC →

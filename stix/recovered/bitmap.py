@@ -20,7 +20,7 @@ from ..islands import oracle_link
 @oracle_link(
     boundary="$709F",
     contract="pixel (x,y) -> (byte_addr, row_in_cell=y&7, col_pair=x&3) via row-base table",
-    status="OBSERVED",
+    status="RECOVERED",
 )
 def bitmap_byte_addr(x: int, y: int, row_base_table: Sequence[int]) -> tuple[int, int, int]:
     """Byte address in the bitmap for pixel (x, y), plus the row-in-cell and
@@ -39,7 +39,7 @@ def bitmap_byte_addr(x: int, y: int, row_base_table: Sequence[int]) -> tuple[int
 @oracle_link(
     boundary="$70D9",
     contract="set a bitmap pixel: byte | column_mask",
-    status="OBSERVED",
+    status="RECOVERED",
 )
 def plot_pixel(byte: int, column_mask: int) -> int:
     """Return the bitmap byte with the pixel at ``column_mask`` set."""
@@ -49,7 +49,7 @@ def plot_pixel(byte: int, column_mask: int) -> int:
 @oracle_link(
     boundary="$697F",
     contract="test a bitmap pixel: byte & column_mask (nonzero = set)",
-    status="OBSERVED",
+    status="RECOVERED",
 )
 def test_pixel(byte: int, column_mask: int) -> int:
     """Return ``byte & column_mask`` — nonzero when the pixel is set."""

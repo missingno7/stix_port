@@ -93,5 +93,6 @@ def test_recovered_hooks_verify_against_demo():
 
     assert not diverged, f"recovered hooks diverged: {dict(diverged)} — {reasons}"
     # every recovered hook must actually fire in the window
-    for name in ("sid_voice1_freq", "poke_cia1_pra", "sprite_to_grid", "read_joystick"):
+    for name in ("sid_voice1_freq", "poke_cia1_pra", "sprite_to_grid", "read_joystick",
+                 "bitmap_pixel_addr", "bitmap_plot", "bitmap_test"):
         assert verified[name] > 0, f"{name} never fired (no evidence)"
