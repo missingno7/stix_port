@@ -15,14 +15,20 @@ built to surface. Grind driver: `python scripts/grind.py`.
 
 ## Where we are
 
-- Phase: bring-up done; now in the lifting loop (recover_one_routine).
-- Native %: 0 RECOVERED (lifted ≠ recovered — the metrics-honesty rule).
-  Lift manifest over the full demo: **31 ORACLE_PASSING** (1,475 instr,
+- Phase: recovery loop (recover_one_routine) — the `stix/` adapter now
+  follows the pre2_port layer layout (recovered/ bridge/ native/ hooks.py
+  input_waits.py verification.py probes/).
+- Native %: first recovered islands landed. **6 recovered functions**
+  (`stix/recovered/`), **4 wired as verified hooks and proven BYTE-EXACT
+  against the demo oracle** (`sid_voice1_freq`, `read_joystick`,
+  `sprite_to_grid`, `poke_cia1_pra` — 0 divergences over 1300 frames,
+  `tests/test_recovered_stix.py`). Island manifest:
+  `docs/stix/recovered_islands.md` (3 RECOVERED, 3 OBSERVED).
+- Lift manifest over the full demo: **31 ORACLE_PASSING** (1,475 instr,
   3,353 code bytes proven byte-exact), 3 DIVERGED, 8 LIFTED-not-fired,
-  27 REFUSED, of 69 routines the playthrough exercises
-  (`artifacts/grind/lift_manifest.json`).
-- Islands by status: 0 recovered; the 31 ORACLE_PASSING lifted artifacts
-  are the refactoring queue (turn each into a named pure rule).
+  27 REFUSED, of 69 routines (`artifacts/grind/lift_manifest.json`).
+- Islands by status: 3 RECOVERED (verified) + 3 OBSERVED pure functions;
+  the 31 ORACLE_PASSING lifted artifacts remain the refactoring queue.
 - Demo corpus: 1 — `demo_run1_20260714_202142` (cold-start, 6301 frames,
   power-on → trainer → full game → game-over; replays bit-identically).
 - Open blockers: none. Findings to chase: $00F1 (runtime-patched SMC →
@@ -31,6 +37,13 @@ built to surface. Grind driver: `python scripts/grind.py`.
 
 ## Recent findings (newest first)
 
+- 2026-07-14 (session 6) — Recovery-proper started: `stix/` restructured to
+  the pre2 layer layout. First recovered source — pure functions in
+  `stix/recovered/` (input/audio/sprites/bitmap), the $4B00 state model as a
+  typed view in `stix/bridge/`, thin verified hooks in `stix/hooks.py`. Four
+  hooks pass the differential oracle byte-exact on the real demo (incl. the
+  branchy $739E joystick, exact exit-state derived by hand). Pure layer is
+  VM-free (audit_layers enforced in the test suite).
 - 2026-07-14 (session 4) — First recovery grind against the full-game demo:
   census found 69 exercised routines (2,657 code bytes touched over 6301
   frames); 42 lift statically; a full-demo differential sweep (per-routine

@@ -61,10 +61,11 @@ class StixFrontend(player.GameFrontend):
                 "started": bool(getattr(args, "start", False))}
 
     def is_input_wait(self, rt) -> bool:
-        # the title poll loop samples $DC01 per iteration — deliver demo
-        # events one per frame there so same-frame release/press pairs are
-        # observed separately
-        return rt.cpu.s.pc in stix.TITLE_LOOP
+        # the title poll samples $DC01 per iteration — deliver demo events one
+        # per frame there so same-frame release/press pairs are observed
+        # separately (the shared input-wait registry, stix.input_waits)
+        from stix.input_waits import is_input_wait
+        return is_input_wait(rt)
 
 
 def main() -> int:

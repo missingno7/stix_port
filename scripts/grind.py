@@ -79,7 +79,8 @@ def replay(demo: InputDemoPlayback, rt, *, max_frames: int | None = None,
 
 
 def _is_input_wait(rt) -> bool:
-    return rt.cpu.s.pc in stix.TITLE_LOOP
+    from stix.input_waits import is_input_wait
+    return is_input_wait(rt)
 
 
 # ---- check -------------------------------------------------------------------------
